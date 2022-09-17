@@ -1,0 +1,100 @@
+version: "3.7"
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - 8000:80
+      - 4444:4444
+    volumes:
+      - ./scratch:/scratch
+      - ./src/app:/app
+      - ${PWD}/src/alembic.ini:/alembic.ini
+      - ${PWD}/src/gunicorn_conf.py:/gunicorn_conf.py
+      - ${PWD}/inotify-restart.sh:/inotify-restart.sh
+    command: bash -c 'while !</dev/tcp/db/5432; do sleep 1; done; alembic -c /alembic.ini upgrade head; /inotify-restart.sh'
+    restart: on-failure
+    networks:
+      - backendnet
+    environment:
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+      - POSTGRES_DB
+      - POSTGRES_PORT=5432
+      - POSTGRES_HOST=db
+      - RABBITMQ_URL=pyamqp://guest:guest@rabbitmq:5672//
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://web/health"]
+      interval: 1m30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      - db
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - rabbitmq
+    networks:
+      - backendnet
+    volumes:
+      - ./scratch:/scratch
+      - ./src/app:/app
+      - ${PWD}/inotify-restart-celery.sh:/inotify-restart-celery.sh
+    command: "/inotify-restart-celery.sh"
+    environment:
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+      - POSTGRES_DB
+      - POSTGRES_PORT=5432
+      - POSTGRES_HOST=db
+      - RABBITMQ_URL=pyamqp://guest:guest@rabbitmq:5672//
+
+  db:
+    image: postgres
+    env_file:
+      - .env
+    restart: always
+    ports:
+      - 6432:5432
+    expose:
+      - 5432
+    shm_size: 1gb
+    networks:
+      - backendnet
+    environment:
+      - POSTGRES_USER=backend
+      - POSTGRES_PASSWORD=backend123
+      - POSTGRES_DB=backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U backend -d backend"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: "rabbitmq:latest"
+    ports:
+      - "4368:4368"
+      - "5671:5671"
+      - "25671:25671"
+      - "15672:15672"
+    networks:
+      - backendnet
+    volumes:
+      - "rabbitmq_data:/bitnami"
+
+volumes:
+  rabbitmq_data:
+    driver: local
+
+networks:
+  backendnet:
+    name: backend_network

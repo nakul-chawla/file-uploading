@@ -1,0 +1,11 @@
+aiohttp==3.8.0
+alembic==1.7.7
+celery[librabbitmq]==5.2.6
+fastapi==0.75.2
+gunicorn==20.1.0
+psycopg2-binary==2.8.6
+python-multipart==0.0.5
+SQLAlchemy==1.4.36
+uvicorn==0.17.6
+Wand==0.6.8
+PyPDF2
